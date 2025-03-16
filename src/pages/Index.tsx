@@ -1,26 +1,21 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
-import { toast } from "@/components/ui/use-toast";
-import BackgroundRemover from '@/components/BackgroundRemover';
-import { Loader2 } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PDFDocument } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { toast } from 'sonner';
 import * as pdfjsLib from 'pdfjs-dist';
 
 // Set up PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@2/build/pdf.worker.js';
 
 const Index = () => {
-  const [originalImage, setOriginalImage] = useState<string | null>(null);
-  const [processedImage, setProcessedImage] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const pdfInputRef = useRef<HTMLInputElement>(null);
-  const modeSelectRef = useRef<HTMLSelectElement>(null);
-  
-  // PDF state
-  const [pdfData, setPdfData] = useState({
+  const [state, setState] = useState({
     docs: [],
     name: "",
     name_description: "",
@@ -30,208 +25,131 @@ const Index = () => {
     bottom_date_2: "",
     qr_code: "",
     attestation_number: "",
+    showFillButton: { image: false, qr: false },
+    selectedImageCroped: ""
   });
-  const [showFillButton, setShowFillButton] = useState({ image: false, qr: false });
-  
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [originalImageSrc, setOriginalImageSrc] = useState("");
+  const [savedImageData, setSavedImageData] = useState("");
+  const [selectedColor, setSelectedColor] = useState({ r: 255, g: 255, b: 255 });
+  const [showModal, setShowModal] = useState(false);
+  const [courseMode, setCourseMode] = useState("normal");
+  const cropperRef = useRef(null);
+  const modalRef = useRef(null);
+  const isMobile = useIsMobile();
+
+  // Load saved mode from localStorage
+  useEffect(() => {
+    const savedMode = localStorage.getItem('selectedMode');
+    if (savedMode) {
+      setCourseMode(savedMode);
+    }
+  }, []);
+
+  // Save mode to localStorage when changed
+  useEffect(() => {
+    localStorage.setItem('selectedMode', courseMode);
+  }, [courseMode]);
+
+  // Handle PDF file upload
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
     if (!file) return;
-    
-    // Check file type
-    if (!file.type.match('image.*')) {
-      toast({
-        variant: "destructive",
-        title: "Invalid file type",
-        description: "Please select an image file"
-      });
-      return;
-    }
-    
-    // Check file size (limit to 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast({
-        variant: "destructive",
-        title: "File too large",
-        description: "Please select an image smaller than 10MB"
-      });
-      return;
-    }
-    
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      setOriginalImage(result);
-      setShowFillButton(prev => ({ ...prev, image: true }));
-    };
-    reader.readAsDataURL(file);
-  };
-  
-  const handleProcessed = (processedImageUrl: string) => {
-    setProcessedImage(processedImageUrl);
-    setIsLoading(false);
-  };
-  
-  const handleDownload = () => {
-    if (processedImage) {
-      const link = document.createElement('a');
-      link.href = processedImage;
-      link.download = 'image-no-background.png';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  };
-  
-  const handleReset = () => {
-    setOriginalImage(null);
-    setProcessedImage(null);
-    setPdfData({
-      docs: [],
-      name: "",
-      name_description: "",
-      date_1: "",
-      date_2: "",
-      bottom_date_1: "",
-      bottom_date_2: "",
-      qr_code: "",
-      attestation_number: "",
-    });
-    setShowFillButton({ image: false, qr: false });
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-    if (pdfInputRef.current) {
-      pdfInputRef.current.value = '';
+
+    try {
+      const docName = file.name;
+      const arrayBuffer = await file.arrayBuffer();
+      await loadPDF(arrayBuffer, docName);
+    } catch (error) {
+      console.error("Error loading PDF:", error);
+      toast.error("Failed to load PDF file");
     }
   };
 
-  // PDF handling functions
-  const handlePdfFile = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  // Handle image upload
+  const handleImageUpload = async (event) => {
+    const file = event.target.files[0];
     if (!file) return;
-    
-    const docName = file.name;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const typedArray = new Uint8Array(e.target?.result as ArrayBuffer);
-      loadPDF(typedArray, docName);
-    };
-    reader.readAsArrayBuffer(file);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const imageSrc = e.target.result;
+        setOriginalImageSrc(imageSrc);
+        setSavedImageData("");
+
+        // Automatically remove background on initial upload
+        const imageWithNoBackground = await intelligentBackgroundRemoval(imageSrc, 40, selectedColor, 10);
+        setState(prev => ({
+          ...prev,
+          selectedImageCroped: imageWithNoBackground,
+          showFillButton: { ...prev.showFillButton, image: true }
+        }));
+
+        // Check if we should show the generate button
+        if (state.showFillButton.qr) {
+          document.getElementById("fillImageButton").style.display = "block";
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error("Error processing image:", error);
+      toast.error("Failed to process image");
+    }
   };
 
-  const loadPDF = (typedArray: Uint8Array, docName: string) => {
-    pdfjsLib.getDocument({ data: typedArray }).promise.then((pdf: any) => {
-      const docs = [...pdfData.docs];
+  // Load PDF and extract content
+  const loadPDF = async (arrayBuffer, docName) => {
+    try {
+      const typedArray = new Uint8Array(arrayBuffer);
+      const pdfDocument = await pdfjsLib.getDocument({ data: typedArray }).promise;
+      
       const pages = [];
       const docInfo = { name: docName, pages };
-      docs.push(docInfo);
       
-      setPdfData(prev => ({ ...prev, docs }));
+      setState(prev => ({
+        ...prev,
+        docs: [...prev.docs, docInfo]
+      }));
 
-      for (let i = 1; i <= pdf.numPages; i++) {
+      for (let i = 1; i <= pdfDocument.numPages; i++) {
         const pageInfo = { number: i, images: [] };
         pages.push(pageInfo);
-        
-        pdf.getPage(i).then((page: any) => {
-          if (i === 1) {
-            processPageOneContent(page);
-          } else if (i === 2) {
-            processPageTwoContent(page);
-            processImagesFromPage(page);
-          }
-        });
+        const page = await pdfDocument.getPage(i);
+        await processPage(page, pageInfo);
+
+        if (i === 2) {
+          await processImagesFromPage(page, pageInfo);
+        }
       }
-    });
+    } catch (error) {
+      console.error("Error in loadPDF:", error);
+      toast.error("Error loading PDF");
+    }
   };
 
-  const processPageOneContent = (page: any) => {
-    page.getTextContent().then((textContent: any) => {
+  // Process PDF page content
+  const processPage = async (page, pageInfo) => {
+    try {
+      const textContent = await page.getTextContent();
       const textItems = extractTextItems(textContent);
       
-      let foundName = false;
-      let foundDateLabel = false;
-      let foundSedeLabel = false;
-      
-      textItems.forEach((item: any, index: number) => {
-        if (foundName) {
-          setPdfData(prev => ({ ...prev, name_description: item.text }));
-          foundName = false;
-        } else if (index === 2) {
-          setPdfData(prev => ({ ...prev, name: item.text }));
-          foundName = true;
-        }
-
-        if (!foundDateLabel && item.text.includes("DATA E ORARIO SVOLGIMENTO LEZIONE")) {
-          foundDateLabel = true;
-        } else if (foundDateLabel) {
-          setPdfData(prev => ({ ...prev, date_1: item.text }));
-          foundDateLabel = false;
-        }
-
-        if (!foundSedeLabel && item.text.includes("SEDE DI SVOLGIMENTO DEL CORSO/I")) {
-          foundSedeLabel = true;
-        } else if (foundSedeLabel) {
-          setPdfData(prev => ({ ...prev, date_2: item.text }));
-          foundSedeLabel = false;
-        }
-      });
-    });
-  };
-
-  const processPageTwoContent = (page: any) => {
-    page.getTextContent().then((textContent: any) => {
-      const textItems = extractTextItems(textContent);
-      const bottomDates: any[] = [];
-      
-      textItems.forEach((item: any) => {
-        const xCoord = item.x;
-        const yCoord = item.y;
-        const proximityThreshold = 30;
-        const targetX = 645.51656;
-        const targetY = 537.021543;
-
-        if (Math.abs(xCoord - targetX) < proximityThreshold && 
-            Math.abs(yCoord - targetY) < proximityThreshold && 
-            item.text.length === 10) {
-          setPdfData(prev => ({ ...prev, attestation_number: item.text }));
-        }
-
-        if (yCoord < 50 && !item.text.includes("Powered by") && !item.text.includes("e s.m.i.")) {
-          bottomDates.push({ text: item.text, x: xCoord });
-        }
-      });
-
-      if (bottomDates.length >= 2) {
-        setPdfData(prev => ({ 
-          ...prev, 
-          bottom_date_1: bottomDates[0].text,
-          bottom_date_2: bottomDates[1].text
-        }));
+      if (pageInfo.number === 1) {
+        processPageOneContent(textItems);
+      } else if (pageInfo.number === 2) {
+        processPageTwoContent(textItems);
       }
-    });
+    } catch (error) {
+      console.error("Error processing page:", error);
+    }
   };
 
-  const processImagesFromPage = (page: any) => {
-    const viewport = page.getViewport({ scale: 1.5 });
-    page.getOperatorList().then((opList: any) => {
-      const svgGfx = new pdfjsLib.SVGGraphics(page.commonObjs, page.objs);
-      svgGfx.getSVG(opList, viewport).then((svg: any) => {
-        const images = svg.querySelectorAll("image");
-        if (images.length > 0) {
-          const imgSrc = images[0].getAttribute("href") || images[0].getAttribute("xlink:href");
-          if (imgSrc) {
-            setPdfData(prev => ({ ...prev, qr_code: imgSrc }));
-            setShowFillButton(prev => ({ ...prev, qr: true }));
-          }
-        }
-      });
-    });
-  };
-
-  const extractTextItems = (textContent: any) => {
+  // Extract text items from PDF content
+  const extractTextItems = (textContent) => {
     return textContent.items
-      .filter((item: any) => item.hasEOL !== true && item.height !== 0)
-      .map((item: any) => ({
+      .filter((item) => item.hasEOL !== true && item.height !== 0)
+      .map((item) => ({
         text: item.str,
         fontSize: item.transform[0],
         x: item.transform[4],
@@ -239,342 +157,588 @@ const Index = () => {
       }));
   };
 
-  const handleGenerateCard = async () => {
-    if (!processedImage) {
-      toast({
-        variant: "destructive",
-        title: "Missing image",
-        description: "Please upload and process an image first"
-      });
-      return;
-    }
+  // Process content from page 1 of PDF
+  const processPageOneContent = (textItems) => {
+    let foundName = false;
+    let foundDateLabel = false;
+    let foundSedeLabel = false;
 
-    if (!pdfData.qr_code) {
-      toast({
-        variant: "destructive",
-        title: "Missing QR code",
-        description: "Please upload a PDF to extract the QR code"
-      });
-      return;
-    }
+    textItems.forEach((item, index) => {
+      if (foundName) {
+        setState(prev => ({ ...prev, name_description: item.text }));
+        foundName = false;
+      } else if (index === 2) {
+        setState(prev => ({ ...prev, name: item.text }));
+        foundName = true;
+      }
 
-    setIsLoading(true);
-    toast({
-      title: "Generating card",
-      description: "Please wait while we prepare your card"
+      if (!foundDateLabel && item.text.includes("DATA E ORARIO SVOLGIMENTO LEZIONE")) {
+        foundDateLabel = true;
+      } else if (foundDateLabel) {
+        setState(prev => ({ ...prev, date_1: item.text }));
+        foundDateLabel = false;
+      }
+
+      if (!foundSedeLabel && item.text.includes("SEDE DI SVOLGIMENTO DEL CORSO/I")) {
+        foundSedeLabel = true;
+      } else if (foundSedeLabel) {
+        setState(prev => ({ ...prev, date_2: item.text }));
+        foundSedeLabel = false;
+      }
+    });
+  };
+
+  // Process content from page 2 of PDF
+  const processPageTwoContent = (textItems) => {
+    const bottomDates = [];
+
+    textItems.forEach((item) => {
+      const xCoord = item.x;
+      const yCoord = item.y;
+      const proximityThreshold = 30;
+      const targetX = 645.51656;
+      const targetY = 537.021543;
+
+      if (Math.abs(xCoord - targetX) < proximityThreshold && 
+          Math.abs(yCoord - targetY) < proximityThreshold && 
+          item.text.length === 10) {
+        setState(prev => ({ ...prev, attestation_number: item.text }));
+      }
+
+      if (yCoord < 50 && 
+          !item.text.includes("Powered by") && 
+          !item.text.includes("e s.m.i.")) {
+        bottomDates.push({ text: item.text, x: xCoord });
+      }
     });
 
+    if (bottomDates.length >= 2) {
+      setState(prev => ({ 
+        ...prev, 
+        bottom_date_1: bottomDates[0].text,
+        bottom_date_2: bottomDates[1].text
+      }));
+    }
+  };
+
+  // Extract images from PDF page
+  const processImagesFromPage = async (page, pageInfo) => {
     try {
-      // Get the PDF path based on mode
-      const mode = modeSelectRef.current?.value || 'normal';
-      const pdfPath = mode === 'aggiornamenti' ? "outputCard Renewal.pdf" : "outputCard v3.1.pdf";
+      const viewport = page.getViewport({ scale: 1.5 });
+      const operatorList = await page.getOperatorList();
+      const svgGfx = new pdfjsLib.SVGGraphics(page.commonObjs, page.objs);
+      const svg = await svgGfx.getSVG(operatorList, viewport);
       
-      // Fetch template PDF
-      const existingPdfBytes = await fetch(pdfPath)
-        .then(res => res.arrayBuffer())
-        .catch(error => {
-          console.error("Error fetching PDF template:", error);
-          toast({
-            variant: "destructive",
-            title: "Template error",
-            description: `Could not load the PDF template: ${pdfPath}`
+      const images = svg.querySelectorAll("image");
+      images.forEach((image) => {
+        const imgSrc = image.getAttribute("href") || image.getAttribute("xlink:href");
+        if (imgSrc) {
+          pageInfo.images.push(imgSrc);
+          if (pageInfo.number === 2) {
+            setState(prev => ({ 
+              ...prev, 
+              qr_code: imgSrc,
+              showFillButton: { ...prev.showFillButton, qr: true }
+            }));
+          }
+        }
+      });
+      
+      // Check if we should show the generate button
+      if (state.showFillButton.image && state.showFillButton.qr) {
+        document.getElementById("fillImageButton").style.display = "block";
+      }
+    } catch (error) {
+      console.error("Error extracting images:", error);
+    }
+  };
+
+  // Intelligent background removal algorithm
+  const intelligentBackgroundRemoval = async (imageSrc, threshold = 40, bgColor, edgeThreshold = 10) => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      const image = new Image();
+      image.crossOrigin = "Anonymous";
+
+      image.onload = () => {
+        canvas.width = image.width;
+        canvas.height = image.height;
+        ctx.drawImage(image, 0, 0);
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+
+        const selectedBgColor = bgColor || { r: data[0], g: data[1], b: data[2] };
+
+        const colorDistance = (r, g, b) => Math.sqrt(
+          Math.pow(r - selectedBgColor.r, 2) +
+          Math.pow(g - selectedBgColor.g, 2) +
+          Math.pow(b - selectedBgColor.b, 2)
+        );
+
+        const edges = detectEdges(data, canvas.width, canvas.height, edgeThreshold);
+
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i + 1], b = data[i + 2];
+
+          if (colorDistance(r, g, b) < threshold && !edges[i / 4]) {
+            data[i + 3] = 0; // Set alpha to 0 (transparent)
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      };
+
+      image.src = imageSrc;
+    });
+  };
+
+  // Edge detection helper for background removal
+  const detectEdges = (data, width, height, threshold) => {
+    const edgeMap = new Array(width * height).fill(false);
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const i = (y * width + x) * 4;
+        const gx = getGradient(data, width, x, y, "x");
+        const gy = getGradient(data, width, x, y, "y");
+        const gradientMagnitude = Math.sqrt(gx * gx + gy * gy);
+
+        if (gradientMagnitude > threshold) {
+          edgeMap[y * width + x] = true;
+        }
+      }
+    }
+    return edgeMap;
+  };
+
+  // Gradient calculation helper
+  const getGradient = (data, width, x, y, direction) => {
+    const offset = direction === "x" ? 1 : width;
+    const p1 = data[(y * width + x) * 4] - data[(y * width + x - offset) * 4];
+    const p2 = data[(y * width + x + offset) * 4] - data[(y * width + x) * 4];
+    return (p1 + p2) / 2;
+  };
+
+  // RGB to Hex color conversion
+  const rgbToHex = (r, g, b) => {
+    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  };
+
+  // Hex to RGB color conversion
+  const hexToRgb = (hex) => {
+    const bigint = parseInt(hex.slice(1), 16);
+    return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
+  };
+
+  // Handle showing the image editing modal
+  const handleUserPicClick = () => {
+    if (originalImageSrc) {
+      setShowModal(true);
+      setTimeout(() => {
+        const img = document.getElementById("imageToCrop");
+        if (img) {
+          img.src = savedImageData || originalImageSrc;
+          
+          // Initialize Cropper.js
+          if (cropperRef.current) {
+            cropperRef.current.destroy();
+          }
+          
+          cropperRef.current = new Cropper(img, {
+            aspectRatio: 0.78,
+            viewMode: 1,
           });
-          throw error;
-        });
+        }
+      }, 100);
+    }
+  };
 
-      // Fetch font
-      const fontBytes = await fetch('librefranklin-semibold.ttf')
-        .then(res => res.arrayBuffer())
-        .catch(error => {
-          console.error("Error fetching font:", error);
-          toast({
-            variant: "destructive",
-            title: "Font error",
-            description: "Could not load the required font"
-          });
-          throw error;
-        });
+  // Update background removal preview
+  const updatePreview = async () => {
+    const threshold = parseInt(document.getElementById("bgThreshold").value, 10);
+    const previewImageData = await intelligentBackgroundRemoval(
+      savedImageData || originalImageSrc, threshold, selectedColor, 10
+    );
 
-      // Load processed image and QR code
-      const imageBytes = await fetch(processedImage).then(res => res.arrayBuffer());
-      const qrCodeBytes = await fetch(pdfData.qr_code).then(res => res.arrayBuffer());
+    document.getElementById("imageToCrop").src = previewImageData;
+    
+    // Reinitialize cropper
+    if (cropperRef.current) {
+      cropperRef.current.destroy();
+    }
+    
+    cropperRef.current = new Cropper(document.getElementById("imageToCrop"), {
+      aspectRatio: 0.78,
+      viewMode: 1,
+    });
+  };
 
-      // Load PDF document
+  // Handle save background removal changes
+  const handleSaveRemoval = async () => {
+    const threshold = parseInt(document.getElementById("bgThreshold").value, 10);
+    const newSavedData = await intelligentBackgroundRemoval(
+      savedImageData || originalImageSrc, threshold, selectedColor, 10
+    );
+    setSavedImageData(newSavedData);
+    
+    setState(prev => ({
+      ...prev,
+      selectedImageCroped: newSavedData
+    }));
+    
+    toast.success("Background removal changes saved");
+  };
+
+  // Handle confirming the cropped image
+  const handleConfirmCrop = async () => {
+    if (cropperRef.current) {
+      const croppedCanvas = cropperRef.current.getCroppedCanvas();
+      const croppedImageDataURL = croppedCanvas.toDataURL("image/png");
+
+      const threshold = parseInt(document.getElementById("bgThreshold").value, 10);
+      const finalImageData = await intelligentBackgroundRemoval(
+        croppedImageDataURL, threshold, selectedColor, 10
+      );
+      
+      setState(prev => ({
+        ...prev,
+        selectedImageCroped: finalImageData
+      }));
+      
+      setShowModal(false);
+    }
+  };
+
+  // Handle generating the PDF
+  const handleGeneratePDF = async () => {
+    if (!state.selectedImageCroped) {
+      toast.error("Please select an image first!");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+
+      // Determine which PDF template to use based on mode
+      const pdfPath = courseMode === "aggiornamenti" 
+        ? "/outputCard Renewal.pdf" 
+        : "/outputCard v3.1.pdf";
+
+      // Fetch required assets
+      const existingPdfBytes = await fetch(`${pdfPath}?${Date.now()}`).then(res => res.arrayBuffer());
+      const fontBytes = await fetch(`/librefranklin-semibold.ttf`).then(res => res.arrayBuffer());
+      const imageBytes = await fetch(state.selectedImageCroped).then(res => res.arrayBuffer());
+      const qrCodeBytes = await fetch(state.qr_code).then(res => res.arrayBuffer());
+
+      // Load and modify PDF
       const pdfDoc = await PDFDocument.load(existingPdfBytes);
-      
-      // Register fontkit and embed font
       pdfDoc.registerFontkit(fontkit);
       const customFont = await pdfDoc.embedFont(fontBytes);
 
-      // Embed images
       const image = await pdfDoc.embedPng(imageBytes);
-      const qrCodeImage = await pdfDoc.embedPng(qrCodeBytes);
+      let qrCodeImage;
+      if (state.qr_code) {
+        qrCodeImage = await pdfDoc.embedPng(qrCodeBytes);
+      }
 
-      // Get form and update fields
       const form = pdfDoc.getForm();
-      const p2_name_description = pdfData.name_description.slice(-16);
+      const p2_name_description = state.name_description.slice(-16);
 
       // Update text fields
-      const updateTextField = (fieldName: string, textValue: string) => {
-        try {
-          const textField = form.getTextField(fieldName);
-          if (textField) {
-            textField.setText(textValue);
-            textField.updateAppearances(customFont);
-          }
-        } catch (error) {
-          console.warn(`Could not update field ${fieldName}:`, error);
+      const updateTextField = (fieldName, textValue) => {
+        const textField = form.getTextField(fieldName);
+        if (textField) {
+          textField.setText(textValue);
+          textField.updateAppearances(customFont);
         }
       };
 
-      updateTextField("p1_name", pdfData.name);
-      updateTextField("p1_name_description", pdfData.name_description);
-      updateTextField("p1_date_1", pdfData.date_1);
-      updateTextField("p1_date_2", pdfData.date_2);
-      updateTextField("p1_date_bottom_1", pdfData.bottom_date_1);
-      updateTextField("p1_date_bottom_2", pdfData.bottom_date_2);
-      updateTextField("p2_attestation_number", pdfData.attestation_number);
-      updateTextField("p2_name", pdfData.name);
+      updateTextField("p1_name", state.name);
+      updateTextField("p1_name_description", state.name_description);
+      updateTextField("p1_date_1", state.date_1);
+      updateTextField("p1_date_2", state.date_2);
+      updateTextField("p1_date_bottom_1", state.bottom_date_1);
+      updateTextField("p1_date_bottom_2", state.bottom_date_2);
+      updateTextField("p2_attestation_number", state.attestation_number);
+      updateTextField("p2_name", state.name);
       updateTextField("p2_name_description", p2_name_description);
-      updateTextField("p2_date_bottom_1", pdfData.bottom_date_1);
-      updateTextField("p2_date_bottom_2", pdfData.bottom_date_2);
+      updateTextField("p2_date_bottom_1", state.bottom_date_1);
+      updateTextField("p2_date_bottom_2", state.bottom_date_2);
 
       // Set images
-      try {
-        form.getButton("p1_user_pic").setImage(image);
+      form.getButton("p1_user_pic").setImage(image);
+      if (qrCodeImage) {
         form.getButton("p2_qr").setImage(qrCodeImage);
-      } catch (error) {
-        console.error("Error setting images:", error);
-        toast({
-          variant: "destructive",
-          title: "Image error",
-          description: "Could not set images in the PDF"
-        });
       }
 
-      // Flatten form and save PDF
       form.flatten();
-      
-      // Set PDF title
-      const safeFileName = pdfData.name.trim().toLowerCase().replace(/\s+/g, '_');
-      pdfDoc.setTitle(safeFileName);
+      pdfDoc.setTitle(state.name.trim().toLowerCase().replace(/\s+/g, '_'));
 
       // Save and download PDF
       const pdfBytesModified = await pdfDoc.save();
       const blob = new Blob([pdfBytesModified], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
 
-      // Download
       const downloadLink = document.createElement('a');
       downloadLink.href = url;
-      downloadLink.download = `${safeFileName}_${Date.now()}_output.pdf`;
-      document.body.appendChild(downloadLink);
+      downloadLink.download = `${state.name.trim().toLowerCase().replace(/\s+/g, '_')}_${Date.now()}_output.pdf`;
       downloadLink.click();
-      document.body.removeChild(downloadLink);
 
       setIsLoading(false);
-      toast({
-        title: "Success!",
-        description: "Your card has been generated and downloaded"
-      });
+      toast.success("PDF generated successfully!");
+      
+      // Optional: Reset form or redirect
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     } catch (error) {
       console.error("Error generating PDF:", error);
+      toast.error("Failed to generate PDF");
       setIsLoading(false);
-      toast({
-        variant: "destructive",
-        title: "Generation failed",
-        description: "There was an error generating your card. Please try again."
-      });
     }
   };
 
+  // Handle input changes
+  const handleInputChange = (field, value) => {
+    setState(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-b from-gray-50 to-gray-100">
-      <div className="w-full max-w-4xl mx-auto">
-        <div className="text-center mb-10 space-y-2">
-          <h1 className="text-4xl font-medium tracking-tight">Background Remover & PDF Card Generator</h1>
-          <p className="text-gray-500 max-w-xl mx-auto">
-            Upload an image and PDF to create professional cards with automatic background removal.
-          </p>
+    <div className="min-h-screen bg-[#f6f8fc]">
+      {/* Loader */}
+      {isLoading && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
         </div>
-        
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden p-8">
-          {!originalImage ? (
-            <div className="space-y-6">
-              <div className="flex flex-col md:flex-row gap-4 justify-center">
-                <div className="flex-1">
-                  <h2 className="text-lg font-medium mb-3">Upload Image</h2>
-                  <div className="flex flex-col items-center justify-center min-h-[200px] border-2 border-dashed border-gray-200 rounded-lg p-8">
-                    <input
-                      type="file"
-                      onChange={handleFileChange}
-                      accept="image/*"
-                      className="hidden"
-                      ref={fileInputRef}
-                    />
-                    <Button 
-                      className="bg-blue-500 hover:bg-blue-600 transition-colors px-6 py-5 h-auto text-lg"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      Upload Image
-                    </Button>
-                    <p className="text-gray-400 mt-3 text-sm">
-                      Supports JPG, PNG, WEBP (Max 10MB)
-                    </p>
-                  </div>
+      )}
+      
+      {/* Image Editing Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" ref={modalRef}>
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-4">
+            <h3 className="text-lg font-semibold mb-2">Edit Image</h3>
+            <div className="mb-4">
+              <img id="imageToCrop" alt="Image to crop" className="max-w-full h-auto mx-auto" />
+            </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Threshold:</Label>
+                  <input 
+                    type="range" 
+                    id="bgThreshold" 
+                    min="0" 
+                    max="100" 
+                    defaultValue="40"
+                    onChange={updatePreview}
+                    className="w-full" 
+                  />
                 </div>
-                
-                <div className="flex-1">
-                  <h2 className="text-lg font-medium mb-3">Upload PDF</h2>
-                  <div className="flex flex-col items-center justify-center min-h-[200px] border-2 border-dashed border-gray-200 rounded-lg p-8">
-                    <input
-                      type="file"
-                      onChange={handlePdfFile}
-                      accept="application/pdf"
-                      className="hidden"
-                      ref={pdfInputRef}
-                    />
-                    <Button 
-                      className="bg-blue-500 hover:bg-blue-600 transition-colors px-6 py-5 h-auto text-lg"
-                      onClick={() => pdfInputRef.current?.click()}
-                    >
-                      Upload PDF
-                    </Button>
-                    <p className="text-gray-400 mt-3 text-sm">
-                      Upload PDF to extract data (Max 10MB)
-                    </p>
-                  </div>
+                <div className="space-y-2">
+                  <Label>Color:</Label>
+                  <input 
+                    type="color" 
+                    id="colorPicker" 
+                    defaultValue="#ffffff"
+                    onChange={(e) => setSelectedColor(hexToRgb(e.target.value))}
+                    className="w-full h-9 rounded border p-1" 
+                  />
                 </div>
               </div>
-              
-              <div className="flex justify-center">
-                <div className="w-full max-w-xs">
-                  <label htmlFor="modeSelect" className="block text-sm font-medium mb-2">Card Type:</label>
-                  <select 
-                    id="modeSelect" 
-                    ref={modeSelectRef}
-                    className="w-full p-2 border border-gray-300 rounded-md"
-                    defaultValue="normal"
-                  >
-                    <option value="normal">Normal</option>
-                    <option value="aggiornamenti">Aggiornamenti</option>
-                  </select>
-                </div>
+              <div className="grid grid-cols-3 gap-2">
+                <Button onClick={handleSaveRemoval}>Save Changes</Button>
+                <Button onClick={handleConfirmCrop}>Confirm</Button>
+                <Button variant="outline" onClick={() => setShowModal(false)}>Close</Button>
               </div>
             </div>
-          ) : (
-            <div className="space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="flex flex-col">
-                  <h2 className="text-lg font-medium mb-3">Original Image</h2>
-                  <div className="bg-gray-50 rounded-lg overflow-hidden flex items-center justify-center p-4 h-[300px]">
-                    <img 
-                      src={originalImage} 
-                      alt="Original" 
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  </div>
-                </div>
-                
-                <div className="flex flex-col">
-                  <h2 className="text-lg font-medium mb-3">Processed Image</h2>
-                  <div className="bg-[url('/placeholder.svg')] bg-center bg-repeat rounded-lg overflow-hidden flex items-center justify-center p-4 h-[300px]">
-                    {isLoading ? (
-                      <div className="flex flex-col items-center justify-center">
-                        <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
-                        <p className="text-gray-500 mt-3">Processing your image...</p>
-                      </div>
-                    ) : processedImage ? (
-                      <img 
-                        src={processedImage} 
-                        alt="Processed" 
-                        className="max-w-full max-h-full object-contain"
-                      />
-                    ) : (
-                      <p className="text-gray-400">Your processed image will appear here</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-              
-              {pdfData.name && (
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h2 className="text-lg font-medium mb-3">Extracted PDF Data</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <p><strong>Name:</strong> {pdfData.name}</p>
-                      <p><strong>Description:</strong> {pdfData.name_description}</p>
-                      <p><strong>Date 1:</strong> {pdfData.date_1}</p>
-                      <p><strong>Date 2:</strong> {pdfData.date_2}</p>
-                    </div>
-                    <div>
-                      <p><strong>Bottom Date 1:</strong> {pdfData.bottom_date_1}</p>
-                      <p><strong>Bottom Date 2:</strong> {pdfData.bottom_date_2}</p>
-                      <p><strong>Attestation #:</strong> {pdfData.attestation_number}</p>
-                      {pdfData.qr_code && (
-                        <div className="mt-2">
-                          <p><strong>QR Code:</strong></p>
-                          <img 
-                            src={pdfData.qr_code} 
-                            alt="QR Code" 
-                            className="w-20 h-20 object-contain"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
+          </div>
+        </div>
+      )}
+
+      <header className="pt-8 pb-4 text-center">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Generate PDF Cards with PDF and Image</h1>
+        <p className="text-gray-700 mt-2">Seamlessly Extracting Text and Images from source PDF File and generating new Card</p>
+      </header>
+
+      <main className="container mx-auto px-4">
+        <div className="bg-white rounded-xl shadow-sm p-4 md:p-6 max-w-4xl mx-auto">
+          {/* Upload Section */}
+          <div className="border-2 border-dashed border-[#ddddf8] rounded-xl p-4 md:p-6 text-center">
+            <div className="flex flex-col items-center justify-center">
+              <svg 
+                width="85" 
+                height="63" 
+                viewBox="0 0 85 63" 
+                fill="none" 
+                xmlns="http://www.w3.org/2000/svg"
+                className="mb-4"
+              >
+                <path d="M42.5 15L32.5 25H40V40H45V25H52.5L42.5 15Z" fill="#1E88E5"/>
+                <path d="M67.5 7.5H42.5L52.5 17.5H67.5V52.5H17.5V17.5H32.5L42.5 7.5H17.5C14.75 7.5 12.5 9.75 12.5 12.5V52.5C12.5 55.25 14.75 57.5 17.5 57.5H67.5C70.25 57.5 72.5 55.25 72.5 52.5V12.5C72.5 9.75 70.25 7.5 67.5 7.5Z" fill="#1E88E5"/>
+              </svg>
+
+              <h3 className="text-xl font-medium mb-2">Upload your files</h3>
+              <p className="text-gray-500 mb-6">Supported formats: JPG, PNG, JPEG, PDF</p>
               
               <div className="flex flex-wrap gap-4 justify-center">
-                <Button 
-                  variant="outline"
-                  onClick={handleReset}
-                >
-                  Upload Another Image
-                </Button>
+                <div>
+                  <Input
+                    id="fileInput"
+                    type="file"
+                    accept="application/pdf"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  <Label htmlFor="fileInput" className="inline-flex h-10 bg-blue-500 text-white rounded-md px-4 py-2 cursor-pointer hover:bg-blue-600 transition-colors">
+                    Select PDF
+                  </Label>
+                </div>
                 
-                {processedImage && (
-                  <Button 
-                    className="bg-blue-500 hover:bg-blue-600 transition-colors"
-                    onClick={handleDownload}
-                  >
-                    Download Image
-                  </Button>
-                )}
-                
-                {processedImage && pdfData.qr_code && (
-                  <Button 
-                    className="bg-green-500 hover:bg-green-600 transition-colors"
-                    onClick={handleGenerateCard}
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Generating...
-                      </>
-                    ) : 'Generate Card'}
-                  </Button>
-                )}
+                <div>
+                  <Input
+                    id="imageInput"
+                    type="file"
+                    accept="image/jpg, image/jpeg, image/png"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                  />
+                  <Label htmlFor="imageInput" className="inline-flex h-10 bg-blue-500 text-white rounded-md px-4 py-2 cursor-pointer hover:bg-blue-600 transition-colors">
+                    Select Image
+                  </Label>
+                </div>
+              </div>
+              
+              <div className="mt-6 w-full max-w-xs">
+                <Label htmlFor="modeSelect" className="mb-2 block">Course:</Label>
+                <Select value={courseMode} onValueChange={(value) => setCourseMode(value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select course type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="normal">Normal</SelectItem>
+                    <SelectItem value="aggiornamenti">Aggiornamenti</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-          )}
+          </div>
+
+          {/* Content Container - Initially Hidden */}
+          <div id="container" className={`mt-6 border border-[#dddfff] rounded-lg p-4 ${(state.showFillButton.image || state.showFillButton.qr) ? 'block' : 'hidden'}`}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Form Fields Section */}
+              <div id="docs" className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="font-bold">Name</Label>
+                  <Input 
+                    value={state.name} 
+                    onChange={(e) => handleInputChange('name', e.target.value)}
+                    className="border-gray-400"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-bold">Name Description</Label>
+                  <Input 
+                    value={state.name_description}
+                    onChange={(e) => handleInputChange('name_description', e.target.value)}
+                    className="border-gray-400"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-bold">Date 1</Label>
+                  <Input 
+                    value={state.date_1}
+                    onChange={(e) => handleInputChange('date_1', e.target.value)}
+                    className="border-gray-400"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-bold">Date 2</Label>
+                  <Input 
+                    value={state.date_2}
+                    onChange={(e) => handleInputChange('date_2', e.target.value)}
+                    className="border-gray-400"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-bold">Bottom Date 1</Label>
+                  <Input 
+                    value={state.bottom_date_1}
+                    onChange={(e) => handleInputChange('bottom_date_1', e.target.value)}
+                    className="border-gray-400"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-bold">Bottom Date 2</Label>
+                  <Input 
+                    value={state.bottom_date_2}
+                    onChange={(e) => handleInputChange('bottom_date_2', e.target.value)}
+                    className="border-gray-400"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-bold">Attestation Number</Label>
+                  <Input 
+                    value={state.attestation_number}
+                    onChange={(e) => handleInputChange('attestation_number', e.target.value)}
+                    className="border-gray-400"
+                  />
+                </div>
+              </div>
+              
+              {/* Images Section */}
+              <div id="Images" className="flex flex-col md:items-end gap-4">
+                <div id="user_pic" onClick={handleUserPicClick} className="cursor-pointer">
+                  {state.selectedImageCroped && (
+                    <img 
+                      src={state.selectedImageCroped} 
+                      id="selectedImage" 
+                      alt="Selected Image"
+                      className="max-w-[140px] md:max-w-[160px] h-auto border border-gray-300 rounded-md"
+                    />
+                  )}
+                  {!state.selectedImageCroped && <div className="w-32 h-40 bg-gray-100 rounded flex items-center justify-center text-gray-400">No Image</div>}
+                </div>
+                
+                <div id="qr_code">
+                  {state.qr_code && (
+                    <img 
+                      src={state.qr_code} 
+                      alt="QR Code"
+                      className="max-w-[140px] md:max-w-[160px] h-auto border border-gray-300 rounded-md"
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Generate Button */}
+          <div className="text-center mt-8">
+            <Button 
+              id="fillImageButton" 
+              onClick={handleGeneratePDF}
+              disabled={!state.showFillButton.image || !state.showFillButton.qr || isLoading}
+              className={`bg-blue-500 hover:bg-blue-600 text-white px-8 py-2 rounded ${(state.showFillButton.image && state.showFillButton.qr) ? 'block' : 'hidden'} mx-auto min-w-[200px]`}
+            >
+              {isLoading ? (
+                <span className="flex items-center">
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Processing...
+                </span>
+              ) : "Generate Card"}
+            </Button>
+          </div>
         </div>
-        
-        <div className="mt-8 text-center text-gray-500 text-sm">
-          <p>Your privacy is important to us. All processing happens directly in your browser.</p>
-          <p>No images are sent to any server.</p>
-        </div>
-      </div>
-      
-      {originalImage && (
-        <BackgroundRemover
-          originalImage={originalImage}
-          onProcessed={handleProcessed}
-          onLoading={setIsLoading}
-        />
-      )}
+      </main>
     </div>
   );
 };
