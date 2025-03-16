@@ -1,5 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" viewBox="0 0 89 63">
+  <defs>
+    <style>
+      .cls-1 {
+        mask: url(#mask);
+      }
 
-<svg width="85" height="63" viewBox="0 0 85 63" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M42.5 15L32.5 25H40V40H45V25H52.5L42.5 15Z" fill="#1E88E5"/>
-  <path d="M67.5 7.5H42.5L52.5 17.5H67.5V52.5H17.5V17.5H32.5L42.5 7.5H17.5C14.75 7.5 12.5 9.75 12.5 12.5V52.5C12.5 55.25 14.75 57.5 17.5 57.5H67.5C70.25 57.5 72.5 55.25 72.5 52.5V12.5C72.5 9.75 70.25 7.5 67.5 7.5Z" fill="#1E88E5"/>
+      .cls-2 {
+        fill: #1e90ff;
+      }
+
+      .cls-3 {
+        fill: #e9f3fd;
+      }
+
+      .cls-4 {
+        fill: none;
+        stroke: #fff;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1.8px;
+      }
+
+      .cls-5 {
+        fill: #fff;
+      }
+
+      .cls-6 {
+        fill: #dae6f2;
+      }
+
+      .cls-7 {
+        fill: #dce8f4;
+      }
+    </style>
+    <mask id="mask" x="6.2" y="23.8" width="58.9" height="30.8" maskUnits="userSpaceOnUse">
+      <g id="mask0_1501_107">
+        <path class="cls-7" d="M58,23.8H16c-3.3,0-6,2.7-6,6v18.2c0,3.3,2.7,6,6,6h42c3.3,0,6-2.7,6-6v-18.2c0-3.3-2.7-6-6-6Z"/>
+      </g>
+    </mask>
+  </defs>
+  <!-- Generator: Adobe Illustrator 28.6.0, SVG Export Plug-In . SVG Version: 1.2.0 Build 709)  -->
+  <g>
+    <g id="Layer_1">
+      <path class="cls-3" d="M58,0H16C12.7,0,10,2.7,10,6v42c0,3.3,2.7,6,6,6h42c3.3,0,6-2.7,6-6V6C64,2.7,61.3,0,58,0Z"/>
+      <g class="cls-1">
+        <path class="cls-6" d="M65.1,31.9v22.7H6.2c.8-5.7,10.6-13.6,16.9-16.6,2.9-1.4,6.3-1,9.3.3,1.1.5,2.3,1,3.5,1.2,2.7.4,7.5-6.9,16-11.5,1.9-1,4.1-1.3,6.2-1.2,3,.2,5.6,2,6.8,4.8l.2.4Z"/>
+      </g>
+      <rect class="cls-2" y="38.8" width="24.2" height="24.2" rx="2.6" ry="2.6"/>
+      <circle class="cls-6" cx="21.9" cy="13" r="4.3"/>
+      <g>
+        <path class="cls-4" d="M17.7,52.7v2.5c0,.3-.1.6-.4.9-.2.2-.5.4-.9.4H7.8c-.3,0-.6-.1-.9-.4-.2-.2-.4-.5-.4-.9v-2.5"/>
+        <path class="cls-4" d="M15.2,48.4l-3.1-3.1-3.1,3.1"/>
+        <path class="cls-4" d="M12.1,45.3v7.4"/>
+      </g>
+      <path class="cls-5" d="M52,5h26c3.9,0,7,3.1,7,7h0c0,3.9-3.1,7-7,7h-26c-3.9,0-7-3.1-7-7h0c0-3.9,3.1-7,7-7Z"/>
+      <ellipse class="cls-2" cx="52" cy="12" rx="3" ry="3"/>
+      <path class="cls-2" d="M62,9h15c1.7,0,3,1.3,3,3h0c0,1.7-1.3,3-3,3h-15c-1.7,0-3-1.3-3-3h0c0-1.7,1.3-3,3-3Z"/>
+      <path class="cls-5" d="M52,23h26c3.9,0,7,3.1,7,7h0c0,3.9-3.1,7-7,7h-26c-3.9,0-7-3.1-7-7h0c0-3.9,3.1-7,7-7Z"/>
+      <ellipse class="cls-7" cx="52" cy="30" rx="3" ry="3"/>
+      <path class="cls-7" d="M62,27h15c1.7,0,3,1.3,3,3h0c0,1.7-1.3,3-3,3h-15c-1.7,0-3-1.3-3-3h0c0-1.7,1.3-3,3-3Z"/>
+    </g>
+  </g>
 </svg>
