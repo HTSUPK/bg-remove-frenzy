@@ -370,6 +370,31 @@ const Index = () => {
     return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
   };
 
+  // Initialize Cropper with proper type-safe options
+  const initializeCropper = (img: HTMLImageElement): CropperInstance => {
+    if (cropperRef.current) {
+      cropperRef.current.destroy();
+    }
+    
+    cropperRef.current = new Cropper(img, {
+      aspectRatio: 0.78,
+      autoCropArea: 0.6,
+      restore: false,
+      guides: false,
+      center: false,
+      highlight: false,
+      cropBoxMovable: true,
+      cropBoxResizable: true,
+      toggleDragModeOnDblclick: false,
+      zoomable: false,
+      minCropBoxWidth: 100,
+      minCropBoxHeight: 100,
+      dragMode: 'move' as Cropper.DragMode,
+    }) as CropperInstance;
+    
+    return cropperRef.current;
+  };
+
   // Handle showing the image editing modal
   const handleUserPicClick = () => {
     if (originalImageSrc) {
@@ -379,24 +404,8 @@ const Index = () => {
         if (img) {
           img.src = savedImageData || originalImageSrc;
           
-          // Initialize Cropper.js
-          if (cropperRef.current) {
-            (cropperRef.current as CropperInstance).destroy();
-          }
-          
-          cropperRef.current = new Cropper(img, {
-            viewMode: 1,
-            dragMode: 'move',
-            aspectRatio: 0.78,
-            autoCropArea: 0.6,
-            restore: false,
-            guides: false,
-            center: false,
-            highlight: false,
-            cropBoxMovable: true,
-            cropBoxResizable: true,
-            toggleDragModeOnDblclick: false,
-          }) as CropperInstance;
+          // Use the initializeCropper function
+          initializeCropper(img);
         }
       }, 100);
     }
@@ -414,24 +423,8 @@ const Index = () => {
     if (img) {
       img.src = previewImageData;
     
-      // Reinitialize cropper
-      if (cropperRef.current) {
-        (cropperRef.current as CropperInstance).destroy();
-      }
-      
-      cropperRef.current = new Cropper(img, {
-        viewMode: 1,
-        dragMode: 'move',
-        aspectRatio: 0.78,
-        autoCropArea: 0.6,
-        restore: false,
-        guides: false,
-        center: false,
-        highlight: false,
-        cropBoxMovable: true,
-        cropBoxResizable: true,
-        toggleDragModeOnDblclick: false,
-      }) as CropperInstance;
+      // Use the initializeCropper function
+      initializeCropper(img);
     }
   };
 
