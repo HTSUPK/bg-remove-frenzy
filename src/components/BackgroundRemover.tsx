@@ -198,8 +198,11 @@ const BackgroundRemover: React.FC<BackgroundRemoverProps> = ({
       );
       const data = outputImageData.data;
       
-      // Apply inverted mask to alpha channel - looking for person segmentation
-      const personMask = result.find(r => r.label === 'person')?.mask || result[0].mask;
+      // Find the person mask or use the first mask that seems to represent a foreground object
+      // We're prioritizing finding a "person" label but will fall back to any non-background object
+      const personMask = result.find(r => r.label === 'person')?.mask || 
+                         result.find(r => !['wall', 'ceiling', 'floor', 'sky', 'background'].includes(r.label))?.mask || 
+                         result[0].mask;
       
       for (let i = 0; i < personMask.data.length; i++) {
         // Apply mask - keep the person, remove background
