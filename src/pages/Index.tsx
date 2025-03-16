@@ -5,10 +5,10 @@ import { toast } from "@/components/ui/use-toast";
 import BackgroundRemover from '@/components/BackgroundRemover';
 import { Loader2 } from "lucide-react";
 import { PDFDocument } from 'pdf-lib';
-import * as fontkit from '@pdf-lib/fontkit';
+import fontkit from '@pdf-lib/fontkit';
+import * as pdfjsLib from 'pdfjs-dist';
 
 // Set up PDF.js
-const pdfjsLib = window.pdfjsLib;
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@2/build/pdf.worker.js';
 
 const Index = () => {
