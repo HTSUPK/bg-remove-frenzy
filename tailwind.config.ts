@@ -1,5 +1,6 @@
 
-import type { Config } from "tailwindcss";
+import { type Config } from "tailwindcss";
+import { fontFamily } from "tailwindcss/defaultTheme";
 
 export default {
   darkMode: ["class"],
@@ -19,6 +20,9 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ["Roboto", ...fontFamily.sans],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -53,9 +57,6 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-      },
-      fontFamily: {
-        roboto: ["Roboto", "sans-serif"],
       },
       borderRadius: {
         lg: "var(--radius)",

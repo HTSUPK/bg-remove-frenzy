@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -10,8 +9,7 @@ import fontkit from '@pdf-lib/fontkit';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
 import * as pdfjsLib from 'pdfjs-dist';
-
-// Import Cropper type
+import 'cropperjs/dist/cropper.css';
 import Cropper from 'cropperjs';
 
 // Set up PDF.js
@@ -29,6 +27,11 @@ interface AppState {
   attestation_number: string;
   showFillButton: { image: boolean; qr: boolean };
   selectedImageCroped: string;
+}
+
+interface CropperInstance extends Cropper {
+  destroy(): void;
+  getCroppedCanvas(): HTMLCanvasElement;
 }
 
 const Index = () => {
@@ -52,7 +55,7 @@ const Index = () => {
   const [selectedColor, setSelectedColor] = useState({ r: 255, g: 255, b: 255 });
   const [showModal, setShowModal] = useState(false);
   const [courseMode, setCourseMode] = useState("normal");
-  const cropperRef = useRef<Cropper | null>(null);
+  const cropperRef = useRef<CropperInstance | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const isMobile = useIsMobile();
 
@@ -378,13 +381,22 @@ const Index = () => {
           
           // Initialize Cropper.js
           if (cropperRef.current) {
-            cropperRef.current.destroy();
+            (cropperRef.current as CropperInstance).destroy();
           }
           
           cropperRef.current = new Cropper(img, {
-            aspectRatio: 0.78,
             viewMode: 1,
-          });
+            dragMode: 'move',
+            aspectRatio: 0.78,
+            autoCropArea: 0.6,
+            restore: false,
+            guides: false,
+            center: false,
+            highlight: false,
+            cropBoxMovable: true,
+            cropBoxResizable: true,
+            toggleDragModeOnDblclick: false,
+          }) as CropperInstance;
         }
       }, 100);
     }
@@ -404,13 +416,22 @@ const Index = () => {
     
       // Reinitialize cropper
       if (cropperRef.current) {
-        cropperRef.current.destroy();
+        (cropperRef.current as CropperInstance).destroy();
       }
       
       cropperRef.current = new Cropper(img, {
-        aspectRatio: 0.78,
         viewMode: 1,
-      });
+        dragMode: 'move',
+        aspectRatio: 0.78,
+        autoCropArea: 0.6,
+        restore: false,
+        guides: false,
+        center: false,
+        highlight: false,
+        cropBoxMovable: true,
+        cropBoxResizable: true,
+        toggleDragModeOnDblclick: false,
+      }) as CropperInstance;
     }
   };
 
@@ -434,7 +455,7 @@ const Index = () => {
   // Handle confirming the cropped image
   const handleConfirmCrop = async () => {
     if (cropperRef.current) {
-      const croppedCanvas = cropperRef.current.getCroppedCanvas();
+      const croppedCanvas = (cropperRef.current as CropperInstance).getCroppedCanvas();
       const croppedImageDataURL = croppedCanvas.toDataURL("image/png");
 
       const thresholdInput = document.getElementById("bgThreshold") as HTMLInputElement;
@@ -785,4 +806,3 @@ const Index = () => {
 };
 
 export default Index;
-
