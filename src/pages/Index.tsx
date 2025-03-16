@@ -11,11 +11,28 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
 import * as pdfjsLib from 'pdfjs-dist';
 
+// Import Cropper type
+import Cropper from 'cropperjs';
+
 // Set up PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@2/build/pdf.worker.js';
 
+interface AppState {
+  docs: any[];
+  name: string;
+  name_description: string;
+  date_1: string;
+  date_2: string;
+  bottom_date_1: string;
+  bottom_date_2: string;
+  qr_code: string;
+  attestation_number: string;
+  showFillButton: { image: boolean; qr: boolean };
+  selectedImageCroped: string;
+}
+
 const Index = () => {
-  const [state, setState] = useState({
+  const [state, setState] = useState<AppState>({
     docs: [],
     name: "",
     name_description: "",
@@ -35,8 +52,8 @@ const Index = () => {
   const [selectedColor, setSelectedColor] = useState({ r: 255, g: 255, b: 255 });
   const [showModal, setShowModal] = useState(false);
   const [courseMode, setCourseMode] = useState("normal");
-  const cropperRef = useRef(null);
-  const modalRef = useRef(null);
+  const cropperRef = useRef<Cropper | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
   const isMobile = useIsMobile();
 
   // Load saved mode from localStorage
@@ -53,8 +70,8 @@ const Index = () => {
   }, [courseMode]);
 
   // Handle PDF file upload
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (!file) return;
 
     try {
@@ -68,14 +85,16 @@ const Index = () => {
   };
 
   // Handle image upload
-  const handleImageUpload = async (event) => {
-    const file = event.target.files[0];
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (!file) return;
 
     try {
       const reader = new FileReader();
       reader.onload = async (e) => {
-        const imageSrc = e.target.result;
+        const imageSrc = e.target?.result as string;
+        if (!imageSrc) return;
+        
         setOriginalImageSrc(imageSrc);
         setSavedImageData("");
 
@@ -89,7 +108,10 @@ const Index = () => {
 
         // Check if we should show the generate button
         if (state.showFillButton.qr) {
-          document.getElementById("fillImageButton").style.display = "block";
+          const fillButton = document.getElementById("fillImageButton");
+          if (fillButton) {
+            fillButton.style.display = "block";
+          }
         }
       };
       reader.readAsDataURL(file);
@@ -100,12 +122,12 @@ const Index = () => {
   };
 
   // Load PDF and extract content
-  const loadPDF = async (arrayBuffer, docName) => {
+  const loadPDF = async (arrayBuffer: ArrayBuffer, docName: string) => {
     try {
       const typedArray = new Uint8Array(arrayBuffer);
       const pdfDocument = await pdfjsLib.getDocument({ data: typedArray }).promise;
       
-      const pages = [];
+      const pages: any[] = [];
       const docInfo = { name: docName, pages };
       
       setState(prev => ({
@@ -130,7 +152,7 @@ const Index = () => {
   };
 
   // Process PDF page content
-  const processPage = async (page, pageInfo) => {
+  const processPage = async (page: any, pageInfo: any) => {
     try {
       const textContent = await page.getTextContent();
       const textItems = extractTextItems(textContent);
@@ -146,10 +168,10 @@ const Index = () => {
   };
 
   // Extract text items from PDF content
-  const extractTextItems = (textContent) => {
+  const extractTextItems = (textContent: any) => {
     return textContent.items
-      .filter((item) => item.hasEOL !== true && item.height !== 0)
-      .map((item) => ({
+      .filter((item: any) => item.hasEOL !== true && item.height !== 0)
+      .map((item: any) => ({
         text: item.str,
         fontSize: item.transform[0],
         x: item.transform[4],
@@ -158,7 +180,7 @@ const Index = () => {
   };
 
   // Process content from page 1 of PDF
-  const processPageOneContent = (textItems) => {
+  const processPageOneContent = (textItems: any[]) => {
     let foundName = false;
     let foundDateLabel = false;
     let foundSedeLabel = false;
@@ -189,8 +211,8 @@ const Index = () => {
   };
 
   // Process content from page 2 of PDF
-  const processPageTwoContent = (textItems) => {
-    const bottomDates = [];
+  const processPageTwoContent = (textItems: any[]) => {
+    const bottomDates: any[] = [];
 
     textItems.forEach((item) => {
       const xCoord = item.x;
@@ -222,7 +244,7 @@ const Index = () => {
   };
 
   // Extract images from PDF page
-  const processImagesFromPage = async (page, pageInfo) => {
+  const processImagesFromPage = async (page: any, pageInfo: any) => {
     try {
       const viewport = page.getViewport({ scale: 1.5 });
       const operatorList = await page.getOperatorList();
@@ -230,7 +252,7 @@ const Index = () => {
       const svg = await svgGfx.getSVG(operatorList, viewport);
       
       const images = svg.querySelectorAll("image");
-      images.forEach((image) => {
+      images.forEach((image: Element) => {
         const imgSrc = image.getAttribute("href") || image.getAttribute("xlink:href");
         if (imgSrc) {
           pageInfo.images.push(imgSrc);
@@ -246,7 +268,10 @@ const Index = () => {
       
       // Check if we should show the generate button
       if (state.showFillButton.image && state.showFillButton.qr) {
-        document.getElementById("fillImageButton").style.display = "block";
+        const fillButton = document.getElementById("fillImageButton");
+        if (fillButton) {
+          fillButton.style.display = "block";
+        }
       }
     } catch (error) {
       console.error("Error extracting images:", error);
@@ -254,7 +279,12 @@ const Index = () => {
   };
 
   // Intelligent background removal algorithm
-  const intelligentBackgroundRemoval = async (imageSrc, threshold = 40, bgColor, edgeThreshold = 10) => {
+  const intelligentBackgroundRemoval = async (
+    imageSrc: string, 
+    threshold = 40, 
+    bgColor: { r: number, g: number, b: number }, 
+    edgeThreshold = 10
+  ): Promise<string> => {
     return new Promise((resolve) => {
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
@@ -262,6 +292,11 @@ const Index = () => {
       image.crossOrigin = "Anonymous";
 
       image.onload = () => {
+        if (!ctx) {
+          resolve("");
+          return;
+        }
+        
         canvas.width = image.width;
         canvas.height = image.height;
         ctx.drawImage(image, 0, 0);
@@ -271,7 +306,7 @@ const Index = () => {
 
         const selectedBgColor = bgColor || { r: data[0], g: data[1], b: data[2] };
 
-        const colorDistance = (r, g, b) => Math.sqrt(
+        const colorDistance = (r: number, g: number, b: number) => Math.sqrt(
           Math.pow(r - selectedBgColor.r, 2) +
           Math.pow(g - selectedBgColor.g, 2) +
           Math.pow(b - selectedBgColor.b, 2)
@@ -296,7 +331,7 @@ const Index = () => {
   };
 
   // Edge detection helper for background removal
-  const detectEdges = (data, width, height, threshold) => {
+  const detectEdges = (data: Uint8ClampedArray, width: number, height: number, threshold: number): boolean[] => {
     const edgeMap = new Array(width * height).fill(false);
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
@@ -314,7 +349,7 @@ const Index = () => {
   };
 
   // Gradient calculation helper
-  const getGradient = (data, width, x, y, direction) => {
+  const getGradient = (data: Uint8ClampedArray, width: number, x: number, y: number, direction: string): number => {
     const offset = direction === "x" ? 1 : width;
     const p1 = data[(y * width + x) * 4] - data[(y * width + x - offset) * 4];
     const p2 = data[(y * width + x + offset) * 4] - data[(y * width + x) * 4];
@@ -322,12 +357,12 @@ const Index = () => {
   };
 
   // RGB to Hex color conversion
-  const rgbToHex = (r, g, b) => {
+  const rgbToHex = (r: number, g: number, b: number): string => {
     return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
   };
 
   // Hex to RGB color conversion
-  const hexToRgb = (hex) => {
+  const hexToRgb = (hex: string): { r: number, g: number, b: number } => {
     const bigint = parseInt(hex.slice(1), 16);
     return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
   };
@@ -337,7 +372,7 @@ const Index = () => {
     if (originalImageSrc) {
       setShowModal(true);
       setTimeout(() => {
-        const img = document.getElementById("imageToCrop");
+        const img = document.getElementById("imageToCrop") as HTMLImageElement;
         if (img) {
           img.src = savedImageData || originalImageSrc;
           
@@ -357,27 +392,32 @@ const Index = () => {
 
   // Update background removal preview
   const updatePreview = async () => {
-    const threshold = parseInt(document.getElementById("bgThreshold").value, 10);
+    const thresholdInput = document.getElementById("bgThreshold") as HTMLInputElement;
+    const threshold = parseInt(thresholdInput?.value || "40", 10);
     const previewImageData = await intelligentBackgroundRemoval(
       savedImageData || originalImageSrc, threshold, selectedColor, 10
     );
 
-    document.getElementById("imageToCrop").src = previewImageData;
+    const img = document.getElementById("imageToCrop") as HTMLImageElement;
+    if (img) {
+      img.src = previewImageData;
     
-    // Reinitialize cropper
-    if (cropperRef.current) {
-      cropperRef.current.destroy();
+      // Reinitialize cropper
+      if (cropperRef.current) {
+        cropperRef.current.destroy();
+      }
+      
+      cropperRef.current = new Cropper(img, {
+        aspectRatio: 0.78,
+        viewMode: 1,
+      });
     }
-    
-    cropperRef.current = new Cropper(document.getElementById("imageToCrop"), {
-      aspectRatio: 0.78,
-      viewMode: 1,
-    });
   };
 
   // Handle save background removal changes
   const handleSaveRemoval = async () => {
-    const threshold = parseInt(document.getElementById("bgThreshold").value, 10);
+    const thresholdInput = document.getElementById("bgThreshold") as HTMLInputElement;
+    const threshold = parseInt(thresholdInput?.value || "40", 10);
     const newSavedData = await intelligentBackgroundRemoval(
       savedImageData || originalImageSrc, threshold, selectedColor, 10
     );
@@ -397,7 +437,8 @@ const Index = () => {
       const croppedCanvas = cropperRef.current.getCroppedCanvas();
       const croppedImageDataURL = croppedCanvas.toDataURL("image/png");
 
-      const threshold = parseInt(document.getElementById("bgThreshold").value, 10);
+      const thresholdInput = document.getElementById("bgThreshold") as HTMLInputElement;
+      const threshold = parseInt(thresholdInput?.value || "40", 10);
       const finalImageData = await intelligentBackgroundRemoval(
         croppedImageDataURL, threshold, selectedColor, 10
       );
@@ -447,7 +488,7 @@ const Index = () => {
       const p2_name_description = state.name_description.slice(-16);
 
       // Update text fields
-      const updateTextField = (fieldName, textValue) => {
+      const updateTextField = (fieldName: string, textValue: string) => {
         const textField = form.getTextField(fieldName);
         if (textField) {
           textField.setText(textValue);
@@ -501,7 +542,7 @@ const Index = () => {
   };
 
   // Handle input changes
-  const handleInputChange = (field, value) => {
+  const handleInputChange = (field: keyof AppState, value: string) => {
     setState(prev => ({
       ...prev,
       [field]: value
@@ -744,3 +785,4 @@ const Index = () => {
 };
 
 export default Index;
+
